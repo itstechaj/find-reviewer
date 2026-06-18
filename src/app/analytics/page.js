@@ -6,13 +6,24 @@ import {
     CategoryScale,
     LinearScale,
     BarElement,
+    RadialLinearScale,
+    ArcElement,
     Title,
     Tooltip,
     Legend,
 } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bar, PolarArea } from 'react-chartjs-2';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    RadialLinearScale,
+    ArcElement,
+    Title,
+    Tooltip,
+    Legend
+);
 
 const CHART_COLORS = [
     'rgba(108, 92, 231, 0.8)',
@@ -42,6 +53,30 @@ const chartOptions = {
         y: {
             ticks: { color: '#8889a0', font: { family: 'Inter' }, stepSize: 1 },
             grid: { color: 'rgba(108, 92, 231, 0.08)' },
+        },
+    },
+};
+
+const polarChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            position: 'right',
+            labels: { color: '#8889a0', font: { family: 'Inter', size: 11 } },
+        },
+        title: { display: false },
+    },
+    scales: {
+        r: {
+            ticks: {
+                color: '#8889a0',
+                font: { family: 'Inter', size: 10 },
+                backdropColor: 'transparent',
+                stepSize: 1,
+            },
+            grid: { color: 'rgba(108, 92, 231, 0.1)' },
+            angleLines: { color: 'rgba(108, 92, 231, 0.1)' },
         },
     },
 };
@@ -105,14 +140,15 @@ export default function AnalyticsPage() {
 
     // Build person chart data
     const buildPersonChartData = () => {
-        const sorted = [...personStats].sort((a, b) => b.totalCount - a.totalCount).slice(0, 15);
+        const sorted = [...personStats].sort((a, b) => b.totalCount - a.totalCount);
         return {
             labels: sorted.map((p) => p.name),
             datasets: [{
                 label: 'Total Reviews',
                 data: sorted.map((p) => p.totalCount),
                 backgroundColor: sorted.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
-                borderRadius: 6,
+                borderColor: '#1a1a2e',
+                borderWidth: 2,
             }],
         };
     };
@@ -186,7 +222,7 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="chart-container">
                         {personStats.length > 0 ? (
-                            <Bar data={buildPersonChartData()} options={chartOptions} />
+                            <PolarArea data={buildPersonChartData()} options={polarChartOptions} />
                         ) : (
                             <div className="empty-state">No review data yet</div>
                         )}
