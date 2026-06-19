@@ -1,6 +1,7 @@
 -- =============================================
--- Find Reviewer - Database Schema
--- Run this in Supabase SQL Editor
+-- Find Reviewer - Database Schema (fresh install)
+-- Run this in Supabase SQL Editor on an empty project.
+-- For an existing deployment, run supabase/migrations/* instead.
 -- =============================================
 
 -- Teams table
@@ -10,22 +11,27 @@ CREATE TABLE teams (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Designations table (with ordering for hierarchy)
-CREATE TABLE designations (
+-- Reviewer types lookup (PRIMARY_REVIEWER / SECONDARY_REVIEWER)
+CREATE TABLE reviewer_types (
   id SERIAL PRIMARY KEY,
   name VARCHAR(50) UNIQUE NOT NULL,
-  "order" INTEGER NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Users table
+-- Users table (no designation column)
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
-  designation_id INTEGER REFERENCES designations(id),
   team_id INTEGER REFERENCES teams(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Many-to-many: a user can be primary, secondary, or both
+CREATE TABLE user_reviewer_types (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reviewer_type_id INTEGER NOT NULL REFERENCES reviewer_types(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, reviewer_type_id)
 );
 
 -- Review types table
@@ -57,7 +63,8 @@ CREATE TABLE review_audit_log (
 -- Indexes
 -- =============================================
 CREATE INDEX idx_users_team ON users(team_id);
-CREATE INDEX idx_users_designation ON users(designation_id);
+CREATE INDEX idx_user_reviewer_types_user ON user_reviewer_types(user_id);
+CREATE INDEX idx_user_reviewer_types_type ON user_reviewer_types(reviewer_type_id);
 CREATE INDEX idx_review_counts_user_type ON review_counts(user_id, review_type_id);
 CREATE INDEX idx_review_counts_count ON review_counts(count);
 CREATE INDEX idx_review_audit_user ON review_audit_log(user_id);
@@ -69,8 +76,8 @@ CREATE INDEX idx_review_audit_type ON review_audit_log(review_type_id);
 -- =============================================
 INSERT INTO teams (name) VALUES ('SIMBA'), ('MUFASA');
 
-INSERT INTO designations (name, "order") VALUES
-  ('SDE1', 1), ('SDE2', 2), ('SDE3', 3), ('EM', 4), ('ARCH', 5);
+INSERT INTO reviewer_types (name) VALUES
+  ('PRIMARY_REVIEWER'), ('SECONDARY_REVIEWER');
 
 INSERT INTO review_types (name) VALUES
   ('PR_REVIEW'), ('SOLUTIONING_REVIEW'), ('GO_LIVE_REVIEW');

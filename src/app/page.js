@@ -19,15 +19,17 @@ const FUNNY_SENTENCES = [
   '🎲 Rolling the dice of destiny...',
 ];
 
+const ANY_TEAM = '__any__';
+
 export default function HomePage() {
   const { email: requesterEmail } = useRequester();
   const [teams, setTeams] = useState([]);
   const [reviewTypes, setReviewTypes] = useState([]);
-  const [designations, setDesignations] = useState([]);
+  const [reviewerTypes, setReviewerTypes] = useState([]);
 
-  const [selectedTeam, setSelectedTeam] = useState('');
+  const [selectedTeam, setSelectedTeam] = useState(ANY_TEAM);
   const [selectedReviewType, setSelectedReviewType] = useState('');
-  const [selectedDesignation, setSelectedDesignation] = useState('0');
+  const [selectedReviewerType, setSelectedReviewerType] = useState('');
   const [link, setLink] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -41,16 +43,19 @@ export default function HomePage() {
     Promise.all([
       fetch('/api/admin/teams').then((r) => r.json()),
       fetch('/api/admin/review-types').then((r) => r.json()),
-      fetch('/api/admin/designations').then((r) => r.json()),
-    ]).then(([t, rt, d]) => {
+      fetch('/api/admin/reviewer-types').then((r) => r.json()),
+    ]).then(([t, rt, rrt]) => {
       setTeams(t);
       setReviewTypes(rt);
-      setDesignations(d);
+      setReviewerTypes(rrt);
+      // Pre-select PRIMARY_REVIEWER so the user can see the default
+      const primary = (rrt || []).find((x) => x.name === 'PRIMARY_REVIEWER');
+      if (primary) setSelectedReviewerType(String(primary.id));
     });
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedTeam || !selectedReviewType || !link.trim()) {
+    if (!selectedReviewType || !link.trim()) {
       setToast({ message: 'Please fill in all required fields', type: 'error' });
       return;
     }
@@ -64,7 +69,6 @@ export default function HomePage() {
     setResult(null);
     setError(null);
 
-    // Show funny loader sentences
     let sentenceIndex = 0;
     const shuffled = [...FUNNY_SENTENCES].sort(() => Math.random() - 0.5);
     setLoaderText(shuffled[0]);
@@ -74,16 +78,15 @@ export default function HomePage() {
       setLoaderText(shuffled[sentenceIndex]);
     }, 1200);
 
-    // Wait for at least 5 seconds for the fun effect
     const minDelay = new Promise((resolve) => setTimeout(resolve, 5000));
 
     const apiCall = fetch('/api/review/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        teamId: parseInt(selectedTeam),
+        teamId: selectedTeam === ANY_TEAM ? null : parseInt(selectedTeam),
         reviewTypeId: parseInt(selectedReviewType),
-        minDesignationOrder: parseInt(selectedDesignation) || 0,
+        reviewerTypeId: selectedReviewerType ? parseInt(selectedReviewerType) : null,
         link: link.trim(),
         requesterEmail,
       }),
@@ -104,7 +107,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTeam, selectedReviewType, selectedDesignation, link, requesterEmail]);
+  }, [selectedTeam, selectedReviewType, selectedReviewerType, link, requesterEmail]);
 
   return (
     <div className="page-container">
@@ -113,7 +116,7 @@ export default function HomePage() {
           Find Your <span className="gradient-text">Perfect Reviewer</span>
         </h1>
         <p className="hero-subtitle">
-          Intelligently assign reviewers based on team, designation, and workload.
+          Intelligently assign reviewers based on team, reviewer type, and workload.
           Fair distribution, zero hassle.
         </p>
       </div>
@@ -136,14 +139,14 @@ export default function HomePage() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="team">Team *</label>
+            <label className="form-label" htmlFor="team">Team</label>
             <select
               id="team"
               className="form-select"
               value={selectedTeam}
               onChange={(e) => setSelectedTeam(e.target.value)}
             >
-              <option value="">Select team</option>
+              <option value={ANY_TEAM}>I don&apos;t care (any team)</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
@@ -151,18 +154,15 @@ export default function HomePage() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="designation">
-              Minimum Designation
-            </label>
+            <label className="form-label" htmlFor="reviewerType">Reviewer Type</label>
             <select
-              id="designation"
+              id="reviewerType"
               className="form-select"
-              value={selectedDesignation}
-              onChange={(e) => setSelectedDesignation(e.target.value)}
+              value={selectedReviewerType}
+              onChange={(e) => setSelectedReviewerType(e.target.value)}
             >
-              <option value="0">Any (No Preference)</option>
-              {designations.map((d) => (
-                <option key={d.id} value={d.order}>{d.name} & above</option>
+              {reviewerTypes.map((rrt) => (
+                <option key={rrt.id} value={rrt.id}>{rrt.name.replace(/_/g, ' ')}</option>
               ))}
             </select>
           </div>
@@ -203,7 +203,7 @@ export default function HomePage() {
           <div className="reviewer-name">{result.name}</div>
           <div className="reviewer-email">{result.email}</div>
           <div className="reviewer-meta">
-            <span className="badge badge-purple">{result.designation}</span>
+            <span className="badge badge-purple">{result.reviewerType?.replace(/_/g, ' ')}</span>
             <span className="badge badge-teal">{result.team}</span>
             <span className="badge badge-pink">{result.reviewType?.replace(/_/g, ' ')}</span>
           </div>

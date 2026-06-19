@@ -6,11 +6,11 @@ const FLIPKART_EMAIL = /^[^\s@]+@flipkart\.com$/;
 
 export async function POST(request) {
     const body = await request.json();
-    const { teamId, reviewTypeId, minDesignationOrder, link, requesterEmail } = body;
+    const { teamId, reviewTypeId, reviewerTypeId, link, requesterEmail } = body;
 
-    if (!teamId || !reviewTypeId || !link) {
+    if (!reviewTypeId || !link) {
         return NextResponse.json(
-            { error: 'teamId, reviewTypeId, and link are required' },
+            { error: 'reviewTypeId and link are required' },
             { status: 400 }
         );
     }
@@ -23,11 +23,30 @@ export async function POST(request) {
         );
     }
 
-    // Find the best reviewer using the allocation strategy
+    // Resolve reviewer type: default to PRIMARY_REVIEWER when not specified.
+    let resolvedReviewerTypeId = reviewerTypeId ? parseInt(reviewerTypeId) : null;
+    if (!resolvedReviewerTypeId) {
+        const { data: primary } = await supabase
+            .from('reviewer_types')
+            .select('id')
+            .eq('name', 'PRIMARY_REVIEWER')
+            .single();
+        if (!primary) {
+            return NextResponse.json(
+                { error: 'PRIMARY_REVIEWER not configured in reviewer_types' },
+                { status: 500 }
+            );
+        }
+        resolvedReviewerTypeId = primary.id;
+    }
+
+    // teamId is optional: omitted / 0 / null means "I don't care, any team".
+    const resolvedTeamId = teamId ? parseInt(teamId) : null;
+
     const { user, error } = await findReviewer(supabase, {
-        teamId,
+        teamId: resolvedTeamId,
         reviewTypeId,
-        minDesignationOrder: minDesignationOrder || null,
+        reviewerTypeId: resolvedReviewerTypeId,
         excludeEmail: normalizedRequester,
     });
 
@@ -42,32 +61,26 @@ export async function POST(request) {
         );
     }
 
-    // Record the assignment
     await recordAssignment(supabase, {
         userId: user.id,
         reviewTypeId,
         link,
     });
 
-    // Fetch team and designation names for the response
-    const { data: team } = await supabase
-        .from('teams')
-        .select('name')
-        .eq('id', teamId)
-        .single();
-
-    const { data: reviewType } = await supabase
-        .from('review_types')
-        .select('name')
-        .eq('id', reviewTypeId)
-        .single();
+    const [{ data: reviewType }, { data: reviewerType }, { data: userTeam }] = await Promise.all([
+        supabase.from('review_types').select('name').eq('id', reviewTypeId).single(),
+        supabase.from('reviewer_types').select('name').eq('id', resolvedReviewerTypeId).single(),
+        user.team_id
+            ? supabase.from('teams').select('name').eq('id', user.team_id).single()
+            : Promise.resolve({ data: null }),
+    ]);
 
     return NextResponse.json({
         reviewer: {
             name: user.name,
             email: user.email,
-            designation: user.designations?.name || 'N/A',
-            team: team?.name || 'N/A',
+            reviewerType: reviewerType?.name || 'N/A',
+            team: user.teams?.name || userTeam?.name || 'N/A',
             reviewType: reviewType?.name || 'N/A',
         },
     });

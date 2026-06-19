@@ -1,69 +1,70 @@
 /**
  * Reviewer Allocation Logic
- * 
- * This module is intentionally separated so the allocation strategy
- * can be swapped without touching any other code.
- * 
- * Current strategy: Round-robin by lowest review count.
- * - Filters users by team
- * - Filters users by designation (>= minDesignationOrder if specified)
- * - Picks the user with the lowest review count for the given review type
- * - If multiple users tie, picks one randomly
+ *
+ * Strategy: Round-robin by lowest review count.
+ * - Filters users by team (if provided)
+ * - Filters users by reviewer_type (e.g. PRIMARY / SECONDARY)
+ * - Always excludes the requester
+ * - Picks the user with the lowest count for the given review type
+ * - Ties broken at random
  */
 
-/**
- * Find the best reviewer based on the current allocation strategy.
- * 
- * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {Object} params
- * @param {number} params.teamId - The team to search within
- * @param {number} params.reviewTypeId - The type of review
- * @param {number|null} params.minDesignationOrder - Minimum designation order (null = any)
- * @returns {Promise<{user: Object|null, error: string|null}>}
- */
-export async function findReviewer(supabase, { teamId, reviewTypeId, minDesignationOrder, excludeEmail }) {
+export async function findReviewer(
+    supabase,
+    { teamId, reviewTypeId, reviewerTypeId, excludeEmail }
+) {
     try {
-        // Step 1: Get eligible users from the team
+        if (!reviewerTypeId) {
+            return { user: null, error: 'reviewerTypeId is required' };
+        }
+        if (!excludeEmail) {
+            // Hard guarantee: we never assign without knowing who asked.
+            return { user: null, error: 'requester email is required' };
+        }
+
+        // Step 1: Find users with the requested reviewer type
+        const { data: rtRows, error: rtError } = await supabase
+            .from('user_reviewer_types')
+            .select('user_id')
+            .eq('reviewer_type_id', reviewerTypeId);
+
+        if (rtError) {
+            return { user: null, error: rtError.message };
+        }
+
+        const candidateIds = (rtRows || []).map((r) => r.user_id);
+        if (candidateIds.length === 0) {
+            return { user: null, error: 'No users available for the selected reviewer type' };
+        }
+
+        // Step 2: Fetch those users, optionally filtered by team
         let usersQuery = supabase
             .from('users')
-            .select('id, name, email, designation_id, team_id, designations(name, order)')
-            .eq('team_id', teamId);
+            .select('id, name, email, team_id, teams(id, name)')
+            .in('id', candidateIds);
+
+        if (teamId) {
+            usersQuery = usersQuery.eq('team_id', teamId);
+        }
 
         const { data: users, error: usersError } = await usersQuery;
-
         if (usersError) {
             return { user: null, error: usersError.message };
         }
 
-        if (!users || users.length === 0) {
-            return { user: null, error: 'No users found in this team' };
-        }
+        let eligibleUsers = users || [];
 
-        // Step 2: Filter by designation order if specified
-        let eligibleUsers = users;
-        if (minDesignationOrder && minDesignationOrder > 0) {
-            eligibleUsers = users.filter(
-                (u) => u.designations && u.designations.order >= minDesignationOrder
-            );
-        }
-
-        if (eligibleUsers.length === 0) {
-            return { user: null, error: 'No users match the designation criteria' };
-        }
-
-        // Step 2b: Exclude the requester so a user can't be assigned to themselves
-        if (excludeEmail) {
-            const normalized = excludeEmail.trim().toLowerCase();
-            eligibleUsers = eligibleUsers.filter(
-                (u) => (u.email || '').toLowerCase() !== normalized
-            );
-        }
+        // Step 3: Always exclude the requester (case-insensitive)
+        const normalizedRequester = excludeEmail.trim().toLowerCase();
+        eligibleUsers = eligibleUsers.filter(
+            (u) => (u.email || '').toLowerCase() !== normalizedRequester
+        );
 
         if (eligibleUsers.length === 0) {
             return { user: null, error: 'No eligible reviewer found' };
         }
 
-        // Step 3: Get review counts for eligible users
+        // Step 4: Pull review counts for the chosen review type
         const userIds = eligibleUsers.map((u) => u.id);
         const { data: counts, error: countsError } = await supabase
             .from('review_counts')
@@ -75,44 +76,30 @@ export async function findReviewer(supabase, { teamId, reviewTypeId, minDesignat
             return { user: null, error: countsError.message };
         }
 
-        // Step 4: Build a count map (users with no record have count = 0)
         const countMap = new Map();
-        for (const c of (counts || [])) {
+        for (const c of counts || []) {
             countMap.set(c.user_id, c.count);
         }
 
-        // Step 5: Find the minimum count
+        // Step 5: Find minimum count and tie-break randomly
         let minCount = Infinity;
         for (const u of eligibleUsers) {
             const c = countMap.get(u.id) || 0;
             if (c < minCount) minCount = c;
         }
 
-        // Step 6: Get all users with the minimum count
         const candidates = eligibleUsers.filter(
             (u) => (countMap.get(u.id) || 0) === minCount
         );
 
-        // Step 7: Pick one randomly from candidates
         const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-
         return { user: chosen, error: null };
     } catch (err) {
         return { user: null, error: err.message };
     }
 }
 
-/**
- * Record a review assignment: update counts + insert audit log entry.
- * 
- * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {Object} params
- * @param {number} params.userId
- * @param {number} params.reviewTypeId
- * @param {string} params.link
- */
 export async function recordAssignment(supabase, { userId, reviewTypeId, link }) {
-    // Upsert review count
     const { data: existing } = await supabase
         .from('review_counts')
         .select('id, count')
@@ -131,7 +118,6 @@ export async function recordAssignment(supabase, { userId, reviewTypeId, link })
             .insert({ user_id: userId, review_type_id: reviewTypeId, count: 1 });
     }
 
-    // Insert audit log
     await supabase
         .from('review_audit_log')
         .insert({

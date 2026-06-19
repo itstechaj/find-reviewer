@@ -5,29 +5,32 @@ import Toast from '@/components/Toast';
 
 export default function AdminPage() {
     const [teams, setTeams] = useState([]);
-    const [designations, setDesignations] = useState([]);
     const [reviewTypes, setReviewTypes] = useState([]);
+    const [reviewerTypes, setReviewerTypes] = useState([]);
     const [users, setUsers] = useState([]);
     const [toast, setToast] = useState(null);
 
     // Form states
     const [newTeam, setNewTeam] = useState('');
-    const [newDesignation, setNewDesignation] = useState({ name: '', order: '' });
     const [newReviewType, setNewReviewType] = useState('');
     const [newUser, setNewUser] = useState({
-        name: '', email: '', designation_id: '', team_id: '',
+        name: '',
+        email: '',
+        team_id: '',
+        isPrimary: true,    // default ON
+        isSecondary: false,
     });
 
     const fetchAll = useCallback(async () => {
-        const [t, d, rt, u] = await Promise.all([
+        const [t, rt, rrt, u] = await Promise.all([
             fetch('/api/admin/teams').then((r) => r.json()),
-            fetch('/api/admin/designations').then((r) => r.json()),
             fetch('/api/admin/review-types').then((r) => r.json()),
+            fetch('/api/admin/reviewer-types').then((r) => r.json()),
             fetch('/api/admin/users').then((r) => r.json()),
         ]);
         setTeams(t);
-        setDesignations(d);
         setReviewTypes(rt);
+        setReviewerTypes(rrt);
         setUsers(u);
     }, []);
 
@@ -35,6 +38,12 @@ export default function AdminPage() {
 
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
+    };
+
+    // Look up reviewer-type IDs by name
+    const idForReviewerType = (name) => {
+        const found = reviewerTypes.find((r) => r.name === name);
+        return found ? found.id : null;
     };
 
     // Add Team
@@ -51,25 +60,6 @@ export default function AdminPage() {
             setTeams([...teams, data]);
             setNewTeam('');
             showToast(`Team "${data.name}" added!`);
-        } else {
-            showToast(data.error, 'error');
-        }
-    };
-
-    // Add Designation
-    const handleAddDesignation = async (e) => {
-        e.preventDefault();
-        if (!newDesignation.name.trim() || !newDesignation.order) return;
-        const res = await fetch('/api/admin/designations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newDesignation),
-        });
-        const data = await res.json();
-        if (res.ok) {
-            setDesignations([...designations, data].sort((a, b) => a.order - b.order));
-            setNewDesignation({ name: '', order: '' });
-            showToast(`Designation "${data.name}" added!`);
         } else {
             showToast(data.error, 'error');
         }
@@ -97,19 +87,43 @@ export default function AdminPage() {
     // Add User
     const handleAddUser = async (e) => {
         e.preventDefault();
-        if (!newUser.name || !newUser.email || !newUser.designation_id || !newUser.team_id) {
-            showToast('All user fields are required', 'error');
+        if (!newUser.name || !newUser.email || !newUser.team_id) {
+            showToast('Name, email, and team are required', 'error');
             return;
         }
+
+        // Build reviewer_type_ids from checkbox state.
+        // If nothing is checked, the server falls back to PRIMARY_REVIEWER.
+        const reviewer_type_ids = [];
+        if (newUser.isPrimary) {
+            const id = idForReviewerType('PRIMARY_REVIEWER');
+            if (id) reviewer_type_ids.push(id);
+        }
+        if (newUser.isSecondary) {
+            const id = idForReviewerType('SECONDARY_REVIEWER');
+            if (id) reviewer_type_ids.push(id);
+        }
+
         const res = await fetch('/api/admin/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newUser),
+            body: JSON.stringify({
+                name: newUser.name,
+                email: newUser.email,
+                team_id: parseInt(newUser.team_id),
+                reviewer_type_ids,
+            }),
         });
         const data = await res.json();
         if (res.ok) {
             setUsers([...users, data]);
-            setNewUser({ name: '', email: '', designation_id: '', team_id: '' });
+            setNewUser({
+                name: '',
+                email: '',
+                team_id: '',
+                isPrimary: true,
+                isSecondary: false,
+            });
             showToast(`User "${data.name}" added!`);
         } else {
             showToast(data.error, 'error');
@@ -128,11 +142,22 @@ export default function AdminPage() {
         }
     };
 
+    const renderReviewerTypeBadges = (types) => {
+        if (!types || types.length === 0) {
+            return <span className="badge badge-purple">PRIMARY</span>;
+        }
+        return types.map((t) => (
+            <span key={t.id} className="badge badge-purple" style={{ marginRight: '0.25rem' }}>
+                {t.name.replace('_REVIEWER', '')}
+            </span>
+        ));
+    };
+
     return (
         <div className="page-container">
             <div className="page-header">
                 <h1 className="page-title">⚙️ Admin Console</h1>
-                <p className="page-subtitle">Manage teams, designations, review types, and users</p>
+                <p className="page-subtitle">Manage teams, reviewer types, review types, and users</p>
             </div>
 
             <div className="admin-grid">
@@ -170,53 +195,28 @@ export default function AdminPage() {
                     ) : <div className="empty-state">No teams yet</div>}
                 </div>
 
-                {/* Designations Card */}
+                {/* Reviewer Types Card (read-only — there are only 2) */}
                 <div className="card">
                     <div className="card-title">
-                        <span className="icon">📊</span> Designations
+                        <span className="icon">🎚️</span> Reviewer Types
                     </div>
-                    <form onSubmit={handleAddDesignation}>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <input
-                                    id="newDesigNameInput"
-                                    className="form-input"
-                                    placeholder="e.g. SDE4"
-                                    value={newDesignation.name}
-                                    onChange={(e) => setNewDesignation({ ...newDesignation, name: e.target.value })}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <input
-                                    id="newDesigOrderInput"
-                                    className="form-input"
-                                    type="number"
-                                    placeholder="Order (e.g. 4)"
-                                    value={newDesignation.order}
-                                    onChange={(e) => setNewDesignation({ ...newDesignation, order: e.target.value })}
-                                />
-                            </div>
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                            Add Designation
-                        </button>
-                    </form>
-                    <hr className="section-divider mt-2" />
-                    {designations.length > 0 ? (
+                    <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+                        Users can be assigned one or both of these when created.
+                    </p>
+                    {reviewerTypes.length > 0 ? (
                         <table className="data-table">
                             <thead>
-                                <tr><th>Name</th><th>Order</th></tr>
+                                <tr><th>Name</th></tr>
                             </thead>
                             <tbody>
-                                {designations.map((d) => (
-                                    <tr key={d.id}>
-                                        <td><span className="badge badge-purple">{d.name}</span></td>
-                                        <td>{d.order}</td>
+                                {reviewerTypes.map((r) => (
+                                    <tr key={r.id}>
+                                        <td><span className="badge badge-purple">{r.name.replace(/_/g, ' ')}</span></td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    ) : <div className="empty-state">No designations yet</div>}
+                    ) : <div className="empty-state">No reviewer types configured</div>}
                 </div>
 
                 {/* Review Types Card */}
@@ -278,27 +278,13 @@ export default function AdminPage() {
                                     id="userEmail"
                                     type="email"
                                     className="form-input"
-                                    placeholder="john@company.com"
+                                    placeholder="john@flipkart.com"
                                     value={newUser.email}
                                     onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                                 />
                             </div>
                         </div>
                         <div className="form-row">
-                            <div className="form-group">
-                                <label className="form-label" htmlFor="userDesignation">Designation</label>
-                                <select
-                                    id="userDesignation"
-                                    className="form-select"
-                                    value={newUser.designation_id}
-                                    onChange={(e) => setNewUser({ ...newUser, designation_id: e.target.value })}
-                                >
-                                    <option value="">Select designation</option>
-                                    {designations.map((d) => (
-                                        <option key={d.id} value={d.id}>{d.name}</option>
-                                    ))}
-                                </select>
-                            </div>
                             <div className="form-group">
                                 <label className="form-label" htmlFor="userTeam">Team</label>
                                 <select
@@ -312,6 +298,30 @@ export default function AdminPage() {
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </select>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Reviewer Type</label>
+                                <div className="checkbox-row">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={newUser.isPrimary}
+                                            onChange={(e) => setNewUser({ ...newUser, isPrimary: e.target.checked })}
+                                        />
+                                        <span>Primary Reviewer</span>
+                                    </label>
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={newUser.isSecondary}
+                                            onChange={(e) => setNewUser({ ...newUser, isSecondary: e.target.checked })}
+                                        />
+                                        <span>Secondary Reviewer</span>
+                                    </label>
+                                </div>
+                                <p className="text-secondary" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                                    If nothing is checked, the user defaults to Primary Reviewer.
+                                </p>
                             </div>
                         </div>
                         <button type="submit" className="btn btn-primary mt-1" style={{ width: '100%' }}>
@@ -327,8 +337,8 @@ export default function AdminPage() {
                                 <tr>
                                     <th>Name</th>
                                     <th>Email</th>
-                                    <th>Designation</th>
                                     <th>Team</th>
+                                    <th>Reviewer Type</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -337,8 +347,8 @@ export default function AdminPage() {
                                     <tr key={u.id}>
                                         <td>{u.name}</td>
                                         <td>{u.email}</td>
-                                        <td><span className="badge badge-purple">{u.designations?.name || '—'}</span></td>
                                         <td><span className="badge badge-teal">{u.teams?.name || '—'}</span></td>
+                                        <td>{renderReviewerTypeBadges(u.reviewer_types)}</td>
                                         <td>
                                             <button
                                                 className="btn btn-danger"
@@ -351,7 +361,7 @@ export default function AdminPage() {
                                 ))}
                             </tbody>
                         </table>
-                    ) : <div className="empty-state">No users yet. Add teams and designations first, then add users.</div>}
+                    ) : <div className="empty-state">No users yet. Add teams first, then add users.</div>}
                 </div>
             </div>
 

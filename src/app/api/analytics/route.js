@@ -1,6 +1,14 @@
 import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
+const USER_TYPES_SELECT = 'user_reviewer_types(reviewer_types(id, name))';
+
+function flattenReviewerTypes(user) {
+    return (user?.user_reviewer_types || [])
+        .map((urt) => urt.reviewer_types)
+        .filter(Boolean);
+}
+
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'team';
@@ -9,20 +17,18 @@ export async function GET(request) {
 
     try {
         if (type === 'team') {
-            // Per-team review counts
             const { data, error } = await supabase
                 .from('review_counts')
                 .select(`
-          count,
-          review_type_id,
-          review_types(name),
-          user_id,
-          users(name, email, team_id, teams(name))
-        `);
+                    count,
+                    review_type_id,
+                    review_types(name),
+                    user_id,
+                    users(name, email, team_id, teams(name))
+                `);
 
             if (error) throw error;
 
-            // Aggregate by team and review type
             const teamStats = {};
             for (const row of (data || [])) {
                 const teamName = row.users?.teams?.name || 'Unknown';
@@ -38,10 +44,9 @@ export async function GET(request) {
         }
 
         if (type === 'person' && email) {
-            // Specific person's review history
             const { data: user } = await supabase
                 .from('users')
-                .select('id, name, email, teams(name), designations(name)')
+                .select(`id, name, email, teams(name), ${USER_TYPES_SELECT}`)
                 .eq('email', email)
                 .single();
 
@@ -49,13 +54,11 @@ export async function GET(request) {
                 return NextResponse.json({ error: 'User not found' }, { status: 404 });
             }
 
-            // Get review counts
             const { data: counts } = await supabase
                 .from('review_counts')
                 .select('count, review_types(name)')
                 .eq('user_id', user.id);
 
-            // Get last 10 reviews from audit log
             const { data: history } = await supabase
                 .from('review_audit_log')
                 .select('link, assigned_at, review_types(name)')
@@ -68,7 +71,7 @@ export async function GET(request) {
                     name: user.name,
                     email: user.email,
                     team: user.teams?.name,
-                    designation: user.designations?.name,
+                    reviewerTypes: flattenReviewerTypes(user),
                 },
                 counts: counts || [],
                 history: history || [],
@@ -76,25 +79,19 @@ export async function GET(request) {
         }
 
         if (type === 'person') {
-            // Per-person review counts (all people)
-            let query = supabase
+            const { data, error } = await supabase
                 .from('review_counts')
                 .select(`
-          count,
-          review_types(name),
-          users(id, name, email, team_id, teams(name), designations(name))
-        `);
-
-            const { data, error } = await query;
+                    count,
+                    review_types(name),
+                    users(id, name, email, team_id, teams(name), ${USER_TYPES_SELECT})
+                `);
             if (error) throw error;
 
-            // Aggregate by person
             const personStats = {};
             for (const row of (data || [])) {
                 const userId = row.users?.id;
                 if (!userId) continue;
-
-                // Filter by team if specified
                 if (teamId && row.users?.team_id !== parseInt(teamId)) continue;
 
                 if (!personStats[userId]) {
@@ -102,7 +99,7 @@ export async function GET(request) {
                         name: row.users.name,
                         email: row.users.email,
                         team: row.users.teams?.name || 'Unknown',
-                        designation: row.users.designations?.name || 'Unknown',
+                        reviewerTypes: flattenReviewerTypes(row.users),
                         reviews: {},
                         totalCount: 0,
                     };

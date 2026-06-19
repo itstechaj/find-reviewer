@@ -242,7 +242,7 @@ export default function AnalyticsPage() {
                                 <th>Name</th>
                                 <th>Email</th>
                                 <th>Team</th>
-                                <th>Designation</th>
+                                <th>Reviewer Type</th>
                                 <th>Total Reviews</th>
                                 <th>Details</th>
                             </tr>
@@ -253,7 +253,17 @@ export default function AnalyticsPage() {
                                     <td>{p.name}</td>
                                     <td>{p.email}</td>
                                     <td><span className="badge badge-teal">{p.team}</span></td>
-                                    <td><span className="badge badge-purple">{p.designation}</span></td>
+                                    <td>
+                                        {(p.reviewerTypes || []).length > 0 ? (
+                                            p.reviewerTypes.map((rt) => (
+                                                <span key={rt.id} className="badge badge-purple" style={{ marginRight: '0.25rem' }}>
+                                                    {rt.name.replace('_REVIEWER', '')}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="badge badge-purple">PRIMARY</span>
+                                        )}
+                                    </td>
                                     <td><strong>{p.totalCount}</strong></td>
                                     <td>
                                         <button
@@ -288,9 +298,19 @@ export default function AnalyticsPage() {
                             <span className="badge badge-teal" style={{ marginRight: '0.5rem' }}>
                                 {personDetail.user?.team || '—'}
                             </span>
-                            <span className="badge badge-purple">
-                                {personDetail.user?.designation || '—'}
-                            </span>
+                            {(personDetail.user?.reviewerTypes || []).length > 0 ? (
+                                personDetail.user.reviewerTypes.map((rt) => (
+                                    <span
+                                        key={rt.id}
+                                        className="badge badge-purple"
+                                        style={{ marginRight: '0.25rem' }}
+                                    >
+                                        {rt.name.replace('_REVIEWER', '')}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="badge badge-purple">PRIMARY</span>
+                            )}
                         </div>
 
                         <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
