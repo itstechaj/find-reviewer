@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Toast from '@/components/Toast';
+import ReassignModal from '@/components/ReassignModal';
 import { useRequester } from '@/components/RequesterContext';
 
 const FUNNY_SENTENCES = [
@@ -35,8 +36,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [loaderText, setLoaderText] = useState('');
   const [result, setResult] = useState(null);
+  const [assignmentId, setAssignmentId] = useState(null);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
+  const [showReassign, setShowReassign] = useState(false);
 
   // Fetch dropdown data
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function HomePage() {
 
     setLoading(true);
     setResult(null);
+    setAssignmentId(null);
     setError(null);
 
     let sentenceIndex = 0;
@@ -100,6 +104,7 @@ export default function HomePage() {
         setError(response.error);
       } else {
         setResult(response.reviewer);
+        setAssignmentId(response.assignmentId || null);
       }
     } catch (err) {
       clearInterval(interval);
@@ -207,7 +212,37 @@ export default function HomePage() {
             <span className="badge badge-teal">{result.team}</span>
             <span className="badge badge-pink">{result.reviewType?.replace(/_/g, ' ')}</span>
           </div>
+          {assignmentId && (
+            <div style={{ marginTop: '1rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowReassign(true)}
+              >
+                🔄 Reassign
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {showReassign && assignmentId && (
+        <ReassignModal
+          assignmentId={assignmentId}
+          requesterEmail={requesterEmail}
+          currentReviewerEmail={result?.email}
+          onClose={() => setShowReassign(false)}
+          onSuccess={(data) => {
+            setShowReassign(false);
+            setResult((prev) => ({
+              ...(prev || {}),
+              name: data.reviewer.name,
+              email: data.reviewer.email,
+              team: data.reviewer.team,
+            }));
+            setToast({ message: `Reassigned to ${data.reviewer.name}`, type: 'success' });
+          }}
+        />
       )}
 
       {error && (

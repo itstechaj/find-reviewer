@@ -56,6 +56,9 @@ CREATE TABLE review_audit_log (
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   review_type_id INTEGER REFERENCES review_types(id) ON DELETE CASCADE,
   link TEXT NOT NULL,
+  requester_email VARCHAR(255),
+  previous_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reassigned_at TIMESTAMPTZ,
   assigned_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -70,6 +73,8 @@ CREATE INDEX idx_review_counts_count ON review_counts(count);
 CREATE INDEX idx_review_audit_user ON review_audit_log(user_id);
 CREATE INDEX idx_review_audit_assigned ON review_audit_log(assigned_at DESC);
 CREATE INDEX idx_review_audit_type ON review_audit_log(review_type_id);
+CREATE INDEX idx_review_audit_requester ON review_audit_log(requester_email);
+CREATE INDEX idx_review_audit_previous_user ON review_audit_log(previous_user_id);
 
 -- =============================================
 -- Seed Data

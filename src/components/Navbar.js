@@ -18,6 +18,12 @@ export default function Navbar() {
                 <Link href="/" className={pathname === '/' ? 'active' : ''}>
                     Review
                 </Link>
+                <Link href="/my-requests" className={pathname === '/my-requests' ? 'active' : ''}>
+                    My Requests
+                </Link>
+                <Link href="/my-assignments" className={pathname === '/my-assignments' ? 'active' : ''}>
+                    My Assignments
+                </Link>
                 <Link href="/admin" className={pathname === '/admin' ? 'active' : ''}>
                     Admin
                 </Link>

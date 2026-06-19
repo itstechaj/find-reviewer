@@ -61,11 +61,16 @@ export async function POST(request) {
         );
     }
 
-    await recordAssignment(supabase, {
+    const { assignmentId, error: recordError } = await recordAssignment(supabase, {
         userId: user.id,
         reviewTypeId,
         link,
+        requesterEmail: normalizedRequester,
     });
+
+    if (recordError) {
+        return NextResponse.json({ error: recordError }, { status: 500 });
+    }
 
     const [{ data: reviewType }, { data: reviewerType }, { data: userTeam }] = await Promise.all([
         supabase.from('review_types').select('name').eq('id', reviewTypeId).single(),
@@ -76,6 +81,7 @@ export async function POST(request) {
     ]);
 
     return NextResponse.json({
+        assignmentId,
         reviewer: {
             name: user.name,
             email: user.email,

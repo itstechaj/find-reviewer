@@ -99,30 +99,47 @@ export async function findReviewer(
     }
 }
 
-export async function recordAssignment(supabase, { userId, reviewTypeId, link }) {
-    const { data: existing } = await supabase
-        .from('review_counts')
-        .select('id, count')
-        .eq('user_id', userId)
-        .eq('review_type_id', reviewTypeId)
-        .single();
+export async function recordAssignment(
+    supabase,
+    { userId, reviewTypeId, link, requesterEmail }
+) {
+    await bumpReviewCount(supabase, userId, reviewTypeId, +1);
 
-    if (existing) {
-        await supabase
-            .from('review_counts')
-            .update({ count: existing.count + 1 })
-            .eq('id', existing.id);
-    } else {
-        await supabase
-            .from('review_counts')
-            .insert({ user_id: userId, review_type_id: reviewTypeId, count: 1 });
-    }
-
-    await supabase
+    const { data: audit, error: auditError } = await supabase
         .from('review_audit_log')
         .insert({
             user_id: userId,
             review_type_id: reviewTypeId,
             link,
-        });
+            requester_email: requesterEmail || null,
+        })
+        .select('id')
+        .single();
+
+    if (auditError) {
+        return { assignmentId: null, error: auditError.message };
+    }
+
+    return { assignmentId: audit.id, error: null };
+}
+
+export async function bumpReviewCount(supabase, userId, reviewTypeId, delta) {
+    const { data: existing } = await supabase
+        .from('review_counts')
+        .select('id, count')
+        .eq('user_id', userId)
+        .eq('review_type_id', reviewTypeId)
+        .maybeSingle();
+
+    if (existing) {
+        const next = Math.max(0, (existing.count || 0) + delta);
+        await supabase
+            .from('review_counts')
+            .update({ count: next })
+            .eq('id', existing.id);
+    } else if (delta > 0) {
+        await supabase
+            .from('review_counts')
+            .insert({ user_id: userId, review_type_id: reviewTypeId, count: delta });
+    }
 }
