@@ -21,7 +21,7 @@
  * @param {number|null} params.minDesignationOrder - Minimum designation order (null = any)
  * @returns {Promise<{user: Object|null, error: string|null}>}
  */
-export async function findReviewer(supabase, { teamId, reviewTypeId, minDesignationOrder }) {
+export async function findReviewer(supabase, { teamId, reviewTypeId, minDesignationOrder, excludeEmail }) {
     try {
         // Step 1: Get eligible users from the team
         let usersQuery = supabase
@@ -49,6 +49,18 @@ export async function findReviewer(supabase, { teamId, reviewTypeId, minDesignat
 
         if (eligibleUsers.length === 0) {
             return { user: null, error: 'No users match the designation criteria' };
+        }
+
+        // Step 2b: Exclude the requester so a user can't be assigned to themselves
+        if (excludeEmail) {
+            const normalized = excludeEmail.trim().toLowerCase();
+            eligibleUsers = eligibleUsers.filter(
+                (u) => (u.email || '').toLowerCase() !== normalized
+            );
+        }
+
+        if (eligibleUsers.length === 0) {
+            return { user: null, error: 'No eligible reviewer found' };
         }
 
         // Step 3: Get review counts for eligible users

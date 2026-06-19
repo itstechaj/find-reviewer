@@ -2,13 +2,23 @@ import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 import { findReviewer, recordAssignment } from '@/lib/allocator';
 
+const FLIPKART_EMAIL = /^[^\s@]+@flipkart\.com$/;
+
 export async function POST(request) {
     const body = await request.json();
-    const { teamId, reviewTypeId, minDesignationOrder, link } = body;
+    const { teamId, reviewTypeId, minDesignationOrder, link, requesterEmail } = body;
 
     if (!teamId || !reviewTypeId || !link) {
         return NextResponse.json(
             { error: 'teamId, reviewTypeId, and link are required' },
+            { status: 400 }
+        );
+    }
+
+    const normalizedRequester = (requesterEmail || '').trim().toLowerCase();
+    if (!normalizedRequester || !FLIPKART_EMAIL.test(normalizedRequester)) {
+        return NextResponse.json(
+            { error: 'A valid @flipkart.com requester email is required' },
             { status: 400 }
         );
     }
@@ -18,6 +28,7 @@ export async function POST(request) {
         teamId,
         reviewTypeId,
         minDesignationOrder: minDesignationOrder || null,
+        excludeEmail: normalizedRequester,
     });
 
     if (error) {

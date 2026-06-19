@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Toast from '@/components/Toast';
+import { useRequester } from '@/components/RequesterContext';
 
 const FUNNY_SENTENCES = [
   '🔭 Searching the cosmos for the perfect reviewer...',
@@ -19,6 +20,7 @@ const FUNNY_SENTENCES = [
 ];
 
 export default function HomePage() {
+  const { email: requesterEmail } = useRequester();
   const [teams, setTeams] = useState([]);
   const [reviewTypes, setReviewTypes] = useState([]);
   const [designations, setDesignations] = useState([]);
@@ -53,6 +55,11 @@ export default function HomePage() {
       return;
     }
 
+    if (!requesterEmail) {
+      setToast({ message: 'Please sign in with your Flipkart email first', type: 'error' });
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     setError(null);
@@ -78,6 +85,7 @@ export default function HomePage() {
         reviewTypeId: parseInt(selectedReviewType),
         minDesignationOrder: parseInt(selectedDesignation) || 0,
         link: link.trim(),
+        requesterEmail,
       }),
     }).then((r) => r.json());
 
@@ -96,7 +104,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTeam, selectedReviewType, selectedDesignation, link]);
+  }, [selectedTeam, selectedReviewType, selectedDesignation, link, requesterEmail]);
 
   return (
     <div className="page-container">

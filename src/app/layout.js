@@ -1,5 +1,7 @@
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import EmailGate from '@/components/EmailGate';
+import { RequesterProvider } from '@/components/RequesterContext';
 
 export const metadata = {
   title: 'FindReviewer - Smart Reviewer Assignment',
@@ -10,8 +12,12 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <main>{children}</main>
+        <RequesterProvider>
+          <Navbar />
+          <EmailGate>
+            <main>{children}</main>
+          </EmailGate>
+        </RequesterProvider>
       </body>
     </html>
   );
